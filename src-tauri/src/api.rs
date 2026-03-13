@@ -1,17 +1,28 @@
 mod cdb;
 mod config;
 use config::Info;
-use std::{sync::OnceLock, path::PathBuf};
+use std::path::PathBuf;
 use bincode::{encode_to_vec, config::{standard, Configuration}};
-use tauri::ipc::Response;
+use tauri::{
+	ipc::Response,
+	path::BaseDirectory,
+	AppHandle,
+	Manager
+};
+use tauri_plugin_os::{OsType, type_};
 
-pub static PATH: OnceLock<PathBuf> = OnceLock::new();
 static CONFIG : Configuration = standard();
 
 #[tauri::command]
-pub async fn get_config () -> Response {
-	PATH.get().ok_or(String::from("get path error")).ok()
-		.and_then(|i| encode_to_vec(Info::new(i.join("config.toml")).to_array(), CONFIG).ok())
+pub async fn get_config (app: AppHandle) -> Response {
+	app.path().resolve("./", {
+		match type_() {
+			OsType::Android => BaseDirectory::Public,
+			_ => BaseDirectory::Resource
+		}
+	})
+		.ok()
+		.and_then(|i: PathBuf| encode_to_vec(Info::new(i.join("config.toml")).to_array(), CONFIG).ok())
 		.map(Response::new)
 		.unwrap_or_else(|| Response::new(Vec::new()))
 }

@@ -92,7 +92,8 @@
 	</div>
 </template>
 <script setup lang = 'ts'>
-	import { onBeforeMount, reactive, watch } from 'vue';
+	import { onBeforeMount, onUnmounted, reactive, watch } from 'vue';
+	import { listen, UnlistenFn } from '@tauri-apps/api/event';
 	import * as dialog from '@tauri-apps/plugin-dialog';
 	import invoke from '../script/invoke';
 	import DB from '../script/db';
@@ -163,9 +164,18 @@
 		}
 	});
 
+	let new_db : UnlistenFn;
 	onBeforeMount(async () => {
 		db.content = (await invoke.get_dbs())
 			.map(i => reactive(new DB(i)));
+		new_db = await listen<Array<string>>('new_db', async (event) => {
+			await Promise.all(
+				event.payload.map(async (i) => {
+					if (await invoke.read_db(i))
+						db.content.push(new DB(i));
+				})
+			);
+		});
 	});
 
 	watch(() => card.select, () => emit('select', db.content[db.select]?.path ?? '', card.select));
@@ -173,6 +183,8 @@
 	const emit = defineEmits<{
 		select : [db : string, card : number];
 	}>();
+
+	onUnmounted(new_db!);
 
 </script>
 

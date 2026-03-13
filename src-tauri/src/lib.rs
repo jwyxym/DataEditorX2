@@ -1,17 +1,40 @@
 mod api;
 
-use std::path::PathBuf;
-use tauri_plugin_os::{OsType, type_};
 use tauri::{
 	Builder,
 	generate_handler,
-	path::BaseDirectory,
+	AppHandle,
+	Emitter,
 	Manager
 };
+use std::path::Path;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-	Builder::default()
+	let mut builder = Builder::default();
+	#[cfg(desktop)]
+    {
+        builder = builder
+			.plugin(tauri_plugin_single_instance::init(|app: &AppHandle, args: Vec<String>, cwd: String| {
+				let _ = app.get_webview_window("main")
+					.expect("no main window")
+					.set_focus();
+				let path: Vec<String> = args
+					.into_iter()
+					.skip(1)
+					.filter_map(|i: String| {
+						Path::new(&cwd)
+							.join(&i)
+							.as_os_str()
+							.to_str()
+							.map(|i: &str| String::from(i))
+					})
+					.collect();
+				let _ = app.emit("new_db", path);
+			}))
+    }
+
+    builder
 		.plugin(tauri_plugin_opener::init())
 		.plugin(tauri_plugin_dialog::init())
 		.invoke_handler(generate_handler![
@@ -25,16 +48,6 @@ pub fn run() {
 			api::create_db,
 			api::close_db,
 		])
-		.setup(|app| {
-			let path: PathBuf = app.path().resolve("./", {
-				match type_() {
-					OsType::Android => BaseDirectory::Public,
-					_ => BaseDirectory::Resource
-				}
-			})?;
-			let _ = api::PATH.set(path);
-			Ok(())
-		})
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");
 }
