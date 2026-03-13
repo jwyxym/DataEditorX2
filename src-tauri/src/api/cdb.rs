@@ -1,7 +1,7 @@
 use rusqlite::params;
 use tokio_rusqlite::Connection;
 use anyhow::{Result, Error, anyhow};
-use std::{collections::BTreeMap, env, sync::OnceLock, path::Path};
+use std::{collections::BTreeMap, env, sync::OnceLock, path::{Path, PathBuf}};
 use tokio::{
 	join, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, task::{JoinHandle, spawn, spawn_blocking, JoinError}
 };
@@ -13,7 +13,17 @@ type Dbs = BTreeMap<String, Db>;
 
 pub async fn init () -> Result<(), Error> {
 	let mut db: Dbs = BTreeMap::new();
-	let args: Vec<String> = env::args().collect();
+	let cwd: PathBuf = env::current_dir()?;
+	let args: Vec<String> = env::args()
+		.skip(1)
+		.filter_map(|i: String| {
+			Path::new(&cwd)
+				.join(&i)
+				.as_os_str()
+				.to_str()
+				.map(|i: &str| String::from(i))
+		})
+		.collect();
 	let tasks: Vec<JoinHandle<Result<(String, Db), Error>>> = args
 		.into_iter()
 		.map(|i| spawn(async {
