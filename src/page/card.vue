@@ -217,7 +217,7 @@
 		card.name = texts[0];
 		card.desc = texts[1];
 		card.hint = texts.slice(2);
-		const arr = props.db.split(/\\/);
+		const arr = props.db.split(/[\\/]/);
 		card.pic = convertFileSrc(arr.slice(0, -1).join('/') + '/pics/' + props.code + '.jpg');
 	});
 </script>
