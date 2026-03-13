@@ -58,6 +58,7 @@
 						type = 'number'
 					/>
 					<var-input
+						v-show = '!card.type.includes(0x4000000)'
 						placeholder = '守备力'
 						v-model = 'card.def'
 						type = 'number'
@@ -65,12 +66,12 @@
 				</var-cell>
 				<var-cell>
 					<var-input
-						placeholder = '等级'
+						placeholder = '等级/阶级/连接数'
 						v-model = 'card.level'
 						type = 'number'
 					/>
 					<var-input
-						v-if = 'card.type.includes(0x1000000)'
+						v-show = 'card.type.includes(0x1000000)'
 						placeholder = '刻度'
 						v-model = 'card.scale'
 						type = 'number'
@@ -217,7 +218,7 @@
 		card.name = texts[0];
 		card.desc = texts[1];
 		card.hint = texts.slice(2);
-		const arr = props.db.split(/\\/);
+		const arr = props.db.split(/[\\/]/);
 		card.pic = convertFileSrc(arr.slice(0, -1).join('/') + '/pics/' + props.code + '.jpg');
 	});
 </script>
