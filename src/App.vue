@@ -37,7 +37,7 @@
 			width: calc(var(--width) * 0.3);
 			height: var(--height);
 			transition: all 0.1s ease;
-			z-index: 1;
+			z-index: 999;
 		}
 		> div:nth-child(2) {
 			width: calc(var(--width) * 0.67);

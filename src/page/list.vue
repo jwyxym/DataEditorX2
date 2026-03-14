@@ -1,5 +1,5 @@
 <template>
-	<div class = 'db' :style = "{ '--x' : card.select < 0 ? '0' : '-200%'}">
+	<div class = 'db' :style = "{ '--x' : card.select === -1 ? '0' : '-200%'}">
 		<var-app-bar :title = "db.select < 0 ? '' : db.content[db.select].name">
 			<template #left>
 				<var-button
@@ -137,7 +137,8 @@
 				: await (async () => {
 					db.content[index].cards = await invoke.get_list(db.content[index].path);
 					db.select = index;
-					card.select = -2;
+					if (!window.matchMedia('(max-aspect-ratio: 1/1)').matches)
+						card.select = -2;
 					await card.change(1, 10);
 				})();
 		},
