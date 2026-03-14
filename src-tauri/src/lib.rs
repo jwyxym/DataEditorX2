@@ -42,6 +42,7 @@ pub fn run() {
 			api::init,
 			api::read_db,
 			api::write_db,
+			api::del_db,
 			api::get_db,
 			api::get_dbs,
 			api::get_list,

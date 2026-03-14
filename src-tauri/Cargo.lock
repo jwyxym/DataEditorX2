@@ -756,6 +756,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tokio",
  "tokio-rusqlite",
+ "walkdir",
 ]
 
 [[package]]

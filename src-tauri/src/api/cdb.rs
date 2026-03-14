@@ -2,8 +2,9 @@ use rusqlite::params;
 use tokio_rusqlite::Connection;
 use anyhow::{Result, Error, anyhow};
 use std::{collections::BTreeMap, env, sync::OnceLock, path::{Path, PathBuf}};
+use walkdir::{WalkDir, DirEntry};
 use tokio::{
-	join, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, task::{JoinHandle, spawn, spawn_blocking, JoinError}
+	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, task::{JoinHandle, spawn}
 };
 
 pub static DB: OnceLock<RwLock<Dbs>> = OnceLock::new();
@@ -51,36 +52,70 @@ pub async fn read (path: String) -> Result<(), Error> {
 	Ok(())
 }
 
-pub async fn write (path: String, cdb: Vec<(Vec<u32>, Vec<String>)>) -> Result<(), Error> {
+pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Result<(), Error> {
 	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
 	let mut db: RwLockWriteGuard<'_, Dbs> = db.write().await;
-	let i: (Result<(), Error>, Result<Result<(), Error>, JoinError>) = join!(
-		write_db(path.clone(), cdb.clone()),
-		spawn_blocking(move || -> Result<(), Error> {
-			let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("no such cdb"))?;
-			Ok(cdb
-				.into_iter()
-				.for_each(|i| {
-					db.insert(i.0[0], i.clone());
-				}))
-		})
-	);
-	i.0?;
-	i.1??;
+	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("no such cdb"))?;
+	if cdb.0[0] != code && db.contains_key(&cdb.0[0]) {
+		return Err(anyhow!("change code error"));
+	}
+	if cdb.0[0] != code {
+		db.remove(&code);
+		del_db(&path, code).await?;
+	}
+	db.insert(cdb.0[0], cdb.clone());
+	write_db(&path, cdb.clone()).await?;
 	Ok(())
 }
 
-pub async fn get (path: String, code: u32) -> Result<(Vec<u32>, Vec<String>), Error> {
+pub async fn del (path: String, code: u32) -> Result<(), Error> {
+	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
+	let mut db: RwLockWriteGuard<'_, Dbs> = db.write().await;
+	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("no such cdb"))?;
+	db.remove(&code);
+	del_db(&path, code).await?;
+	Ok(())
+}
+
+pub async fn get (path: String, code: u32) -> Result<(String, (Vec<u32>, Vec<String>)), Error> {
 	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
 	let db: RwLockReadGuard<'_, Dbs> = db.read().await;
-	Ok(db
+	let db: (Vec<u32>, Vec<String>) = db
 		.get(&path)
 		.ok_or(anyhow!("no such db"))?
 		.get(&code)
 		.ok_or(anyhow!("no such code"))
 		.unwrap_or(&(Vec::new(), Vec::new()))
-		.clone()
-	)
+		.clone();
+	let pic: String = (|| -> Result<String, Error> {
+		let path: PathBuf = Path::new(&path)
+			.parent()
+			.ok_or(anyhow!("path error"))?
+			.join("pics");
+		let pic: DirEntry = WalkDir::new(path)
+			.into_iter()
+			.filter_map(|i| i.ok())
+			.find(|i| {
+				let name: &str = i.path()
+					.file_name()
+					.and_then(|n| n.to_str())
+					.unwrap_or("");
+				let ext: &str = i.path()
+					.extension()
+					.and_then(|n| n.to_str())
+					.unwrap_or("");
+				name.starts_with(&format!("{}.", code))
+					&& ["jpg", "jpeg", "png", "webp"].contains(&ext)
+			})
+			.ok_or(anyhow!("no such path"))?;
+		Ok(pic
+			.path()
+			.as_os_str()
+			.to_str()
+			.ok_or(anyhow!("no such path"))?
+			.to_string())
+	})().unwrap_or(String::new());
+	Ok((pic, db))
 }
 
 pub async fn get_list (path: String) -> Result<Vec<(u32, String)>, Error> {
@@ -177,7 +212,27 @@ async fn read_db<P: AsRef<Path>> (path: P) -> Result<Db, Error> {
 	Ok(result)
 }
 
-async fn write_db<P: AsRef<Path>> (path: P, db : Vec<(Vec<u32>, Vec<String>)>) -> Result<(), Error> {
+async fn del_db<P: AsRef<Path>> (path: P, code: u32) -> Result<(), Error> {
+	let conn: Connection = Connection::open(path).await?;
+	conn.call(move |conn| {
+		let tx = conn.transaction()?;
+		
+		let mut datas = tx.prepare("DELETE FROM datas WHERE id = ?")?;
+		let mut texts = tx.prepare("DELETE FROM texts WHERE id = ?")?;
+		
+		let _ = datas.execute([code])?;
+		let _ = texts.execute([code])?;
+
+		drop(datas);
+		drop(texts);
+		
+		tx.commit()?;
+		Ok::<(), Error>(())
+	}).await
+		.map_err(|e| anyhow!("{}", e))?;
+	Ok(())
+}
+async fn write_db<P: AsRef<Path>> (path: P, db : (Vec<u32>, Vec<String>)) -> Result<(), Error> {
 	let conn: Connection = Connection::open(path).await?;
 	conn.call(move |conn| {
 		let tx = conn.transaction()?;
@@ -192,12 +247,10 @@ async fn write_db<P: AsRef<Path>> (path: P, db : Vec<(Vec<u32>, Vec<String>)>) -
 				id, name, desc, 
 				str1, str2, str3, str4, str5, str6, str7, str8,
 				str9, str10, str11, str12, str13, str14, str15, str16
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 		)?;
-		db.iter().for_each(|i| {
-			let _ = datas.execute(params![i.0[0], i.0[1], i.0[2], i.0[3], i.0[4], i.0[5], i.0[6], i.0[7], i.0[8], i.0[9], i.0[10], i.0[11]]);
-			let _ = texts.execute(params![i.0[0], i.1[0], i.1[1], i.1[2], i.1[3], i.1[4], i.1[5], i.1[6], i.1[7], i.1[8], i.1[9], i.1[10], i.1[11], i.1[12], i.1[13], i.1[14], i.1[15], i.1[16], i.1[17]]);
-		});
+		let _ = datas.execute(params![db.0[0], db.0[1], db.0[2], db.0[3], db.0[4], db.0[5], db.0[6], db.0[7], db.0[8], db.0[9], db.0[10]])?;
+		let _ = texts.execute(params![db.0[0], db.1[0], db.1[1], db.1[2], db.1[3], db.1[4], db.1[5], db.1[6], db.1[7], db.1[8], db.1[9], db.1[10], db.1[11], db.1[12], db.1[13], db.1[14], db.1[15], db.1[16], db.1[17]])?;
 		drop(datas);
 		drop(texts);
 		tx.commit()?;

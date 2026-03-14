@@ -1,6 +1,6 @@
 <template>
 	<div class = 'dex no-scrollbar' v-if = 'show'>
-		<List @select = '(db : string, code : number) => { select.db = db; select.code = code; console.log(select) }'/>
+		<List @select = '(db : string, code : number) => { select.db = db; select.code = code; }'/>
 		<Transition name = 'opacity'>
 			<Card :db = 'select.db' :code = 'select.code' v-if = 'select.code >= 0'/>
 		</Transition>
@@ -79,7 +79,7 @@
 			display: none;
 		}
 	}
-	.pointer {
+	.pointer, .var-chip {
 		&:hover {
 			cursor: pointer;
 		}

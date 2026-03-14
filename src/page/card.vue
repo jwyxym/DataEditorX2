@@ -1,5 +1,34 @@
 <template>
 	<div class = 'card'>
+		<var-app-bar :title = 'card.name'>
+			<template #left>
+				<var-button
+					color = 'transparent'
+					text-color = '#fff'
+					round
+					text
+					@click = 'card.exit'
+				>
+					<var-icon name = 'chevron-left' :size = '24' />
+				</var-button>
+			</template>
+			<template #right>
+				<var-menu>
+					<var-button
+						color = 'transparent'
+						text-color = '#fff'
+						round
+						text
+					>
+						<var-icon name = 'menu' :size = '24' />
+					</var-button>
+					<template #menu>
+						<var-cell ripple class = 'pointer' @click = 'card.save'>保存</var-cell>
+						<var-cell ripple class = 'pointer' @click = 'card.del'>删除</var-cell>
+					</template>
+				</var-menu>
+			</template>
+		</var-app-bar>
 		<div class = 'no-scrollbar'>
 			<div>
 				<var-cell>
@@ -132,6 +161,11 @@
 				</div>
 			</div>
 		</div>
+		<div class = 'btns'>
+			<var-chip plain type = 'success' @click = 'card.exit'>退出</var-chip>
+			<var-chip plain type = 'success' @click = 'card.save'>保存</var-chip>
+			<var-chip plain type = 'danger' @click = 'card.del'>删除</var-chip>
+		</div>
 	</div>
 </template>
 <script setup lang = 'ts'>
@@ -140,6 +174,8 @@
 
 	import invoke from '../script/invoke';
 	import config from '../script/config';
+	import toast from '../script/toast';
+	import emitter from '../script/emit';
 
 	const href = window.location.href;
 
@@ -161,6 +197,7 @@
 
 	const card = reactive({
 		id : '',
+		old_name : '',
 		name : '',
 		ot : [] as Array<number>,
 		alias : '',
@@ -179,14 +216,56 @@
 		pic : '',
 		update : {
 			link : (link : number) => card.link+= (card.link & link ? - 1 : 1) * link
-		}
+		},
+		save : async () => {
+			const row = [
+				parseInt(card.id),
+				card.ot.reduce((acc, curr) => acc + curr, 0),
+				parseInt(card.alias),
+				card.setcode.map(i => parseInt(i, 16)).reduce((acc, curr) => acc + curr, 0),
+				card.type.reduce((acc, curr) => acc + curr, 0),
+				parseInt(card.atk),
+				card.type.includes(0x4000000) ? card.link : parseInt(card.def),
+				parseInt(card.level),
+				card.race,
+				card.attribute,
+				card.category.reduce((acc, curr) => acc + curr, 0)
+			];
+			if (row.findIndex(i => isNaN(i)) > -1) {
+				toast.error('参数错误');
+				return;
+			}
+
+			if (await invoke.write_db(props.db, props.code, [
+				row,
+				[
+					card.name,
+					card.desc
+				].concat(card.hint)
+			])) {
+				emitter.emit('change', [props.code, parseInt(card.id), card.name]);
+				card.old_name = card.name;
+				toast.info('保存成功');
+			}
+		},
+		del : async () => {
+			if (await invoke.del_db(props.db, props.code)) {
+				emitter.emit('change', [props.code, null, null]);
+				toast.info('删除成功');
+			}
+		},
+		exit : () => {
+			emitter.emit('exit');
+		},
 	});
 
 	const to_array = (flags : number) => {
 		const result = [];
-		for (let i = 0; i < 32; i++)
-			if (flags & (1 << i))
-				result.push(1 << i);
+		for (let i = 0; i < 32; i++) {
+			const bit = 1 << i;
+			if (flags & bit)
+				result.push(bit >>> 0);
+		}
 		return result;
 	};
 
@@ -196,7 +275,11 @@
 	}>();
 
 	onBeforeMount(async () => {
-		const [datas, texts] = await invoke.get_db(props.db, props.code);
+		const c = await invoke.get_db(props.db, props.code);
+		if (!c) return;
+		card.pic = c.path.length > 0 ? convertFileSrc(c.path)
+			: (href + 'cover.jpg');
+		const [datas, texts] = c.card;
 		card.id = datas[0].toString();
 		card.ot = to_array(datas[1]);
 		card.alias = datas[2].toString();
@@ -215,16 +298,32 @@
 		card.race = datas[8];
 		card.attribute = datas[9];
 		card.category = to_array(datas[10]);
+		card.old_name = texts[0];
 		card.name = texts[0];
 		card.desc = texts[1];
 		card.hint = texts.slice(2);
-		const arr = props.db.split(/[\\/]/);
-		card.pic = convertFileSrc(arr.slice(0, -1).join('/') + '/pics/' + props.code + '.jpg');
 	});
 </script>
 <style scoped lang = 'scss'>
 	.card {
-		> div {
+		:deep(.var-app-bar) {
+			width: 100%;
+			height: 0px;
+			opacity: 0;
+			transition: all 0.1s ease;
+			user-select: none;
+			pointer-events: none;
+		}
+		.btns {
+			width: 100%;
+			height: 50px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: 5px;
+			transition: all 0.1s ease;
+		}
+		> div:nth-child(2) {
 			padding-top: 10px;
 			width: 100%;
 			height: calc(100% - 60px);
@@ -296,7 +395,20 @@
 					height: 220px;
 				}
 			}
-			@media (max-aspect-ratio: 1/1) {
+		}
+		
+		@media (max-aspect-ratio: 1/1) {
+			:deep(.var-app-bar) {
+				height: 50px;
+				opacity: 1;
+				user-select: initial;
+				pointer-events: initial;
+			}
+			.btns {
+				height: 0px !important;
+				opacity: 0;
+			}
+			> div:nth-child(2) {
 				gap: 10px;
 				transform: translateX(-3px);
 				> div {
@@ -319,6 +431,15 @@
 								height: 30px;
 							}
 						}
+					}
+				}
+				.hint {
+					height: initial !important;
+					display: flex;
+					flex-direction: column;
+					align-items: center;
+					.var-input {
+						width: 80%;
 					}
 				}
 			}

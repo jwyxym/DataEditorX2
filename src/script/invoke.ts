@@ -21,9 +21,19 @@ class Invoke {
 		}
 		return true;
 	};
-	write_db = async (path : string, cards : Array<[Array<number>, Array<string>]>) : Promise<boolean> => {
+	write_db = async (path : string, code : number, cards : [Array<number>, Array<string>]) : Promise<boolean> => {
 		try {
-			await tauri_invoke('write_db', { path : path, cdb : cards });
+			console.log(path, cards, code)
+			await tauri_invoke('write_db', { path : path, code : code, cdb : cards });
+		} catch (e) {
+			toast.error(e)
+			return false;
+		}
+		return true;
+	};
+	del_db = async (path : string, code : number) : Promise<boolean> => {
+		try {
+			await tauri_invoke('del_db', { path : path, code : code });
 		} catch (e) {
 			toast.error(e)
 			return false;
@@ -48,16 +58,19 @@ class Invoke {
 		}
 		return true;
 	};
-	get_db = async (path : string, code : number) : Promise<[Array<number>, Array<string>]> => {
+	get_db = async (path : string, code : number) : Promise<{path : string; card : [Array<number>, Array<string>]} | undefined> => {
 		try {
 			const result = await tauri_invoke<ArrayBuffer>('get_db', { path : path, code : code });
-			return bincode.decode(bincode.Tuple(
-				bincode.Collection(bincode.u32),
-				bincode.Collection(bincode.String)
-			), result).value as [Array<number>, Array<string>];
+			return bincode.decode(bincode.Struct({
+				path : bincode.String,
+				card : bincode.Tuple(
+					bincode.Collection(bincode.u32),
+					bincode.Collection(bincode.String)
+				)
+			}), result).value as any;
 		} catch (e) {
 			toast.error(e)
-			return [[], []];
+			return undefined;
 		}
 	};
 	get_list = async (path : string) : Promise<Array<[number, string]>> => {

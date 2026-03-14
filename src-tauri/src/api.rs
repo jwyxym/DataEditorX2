@@ -38,8 +38,13 @@ pub async fn read_db (path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn write_db (path: String, cdb: Vec<(Vec<u32>, Vec<String>)>) -> Result<(), String> {
-	cdb::write(path, cdb).await.map_err(|e| e.to_string())
+pub async fn write_db (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Result<(), String> {
+	cdb::write(path, code, cdb).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn del_db (path: String, code: u32) -> Result<(), String> {
+	cdb::del(path, code).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

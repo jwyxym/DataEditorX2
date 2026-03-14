@@ -98,6 +98,7 @@
 	import invoke from '../script/invoke';
 	import DB from '../script/db';
 	import sleep from '../script/sleep';
+	import emitter from '../script/emit';
 
 	const card = reactive({
 		content : [] as Array<[number, string]>,
@@ -117,7 +118,7 @@
 				await sleep(100);
 			}
 			card.content = db
-				.content[db.select].cards?.slice(current * size, (current + 1) * size) ?? []
+				.content[db.select].cards?.slice((current - 1) * size, current * size) ?? []
 		}
 	});
 
@@ -185,6 +186,44 @@
 	}>();
 
 	onUnmounted(new_db!);
+
+	emitter.on('exit', async () => {
+		card.select = - 1;
+	});
+	emitter.on('change', async (arr : any) => {
+		if (arr[1] === null) {
+			const i = arr as [number, null, null];
+			let index = db.content[db.select].cards
+				?.findIndex(v => v[0] === i[0]) ?? -1;
+			if (index > -1)
+				db.content[db.select].cards?.splice(index ,1);
+			index = card.content
+				?.findIndex(v => v[0] === i[0]) ?? -1;
+			if (index > -1) {
+				const cache = card.content;
+				card.content = [];
+				cache.splice(index ,1);
+				await sleep(100);
+				card.content = cache;
+			}
+			card.select = - 1;
+			return;
+		}
+		const i = arr as [number, number, string];
+		const c = db.content[db.select].cards
+			?.find(v => v[0] === i[0]);
+		if (c) {
+			c[0] = i[1];
+			c[1] = i[2];
+			card.select = c[0];
+			const cache = card.content;
+			card.content = [];
+			cache.sort((a, b) => a[0] - b[0]);
+			await sleep(100);
+			card.content = cache;
+			db.content[db.select].cards?.sort((a, b) => a[0] - b[0]);
+		}
+	});
 
 </script>
 
