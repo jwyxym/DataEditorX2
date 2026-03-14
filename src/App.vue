@@ -2,7 +2,7 @@
 	<div class = 'dex no-scrollbar' v-if = 'show'>
 		<List @select = '(db : string, code : number) => { select.db = db; select.code = code; }'/>
 		<Transition name = 'opacity'>
-			<Card :db = 'select.db' :code = 'select.code' v-if = 'select.code >= 0'/>
+			<Card :db = 'select.db' :code = 'select.code' v-if = 'select.code >= 0 || select.code === -2'/>
 		</Transition>
 	</div>
 </template>

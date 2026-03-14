@@ -214,21 +214,21 @@
 
 	const card = reactive({
 		lua : ['' ,'local s,id,o=GetID()\nfunction s.initial_effect(c)\n\nend'] as [string, string],
-		id : '0',
+		id : '',
 		old_name : '',
 		name : '',
 		ot : [] as Array<number>,
-		alias : '0',
-		level : '0',
-		scale : '0',
-		atk : '0',
-		def : '0',
+		alias : '',
+		level : '',
+		scale : '',
+		atk : '',
+		def : '',
 		link : 0,
 		type : [] as Array<number>,
 		race : 0,
 		attribute : 0,
 		category : [] as Array<number>,
-		setcode : ['0', '0', '0', '0'] as [string, string, string, string],
+		setcode : ['', '', '', ''] as [string, string, string, string],
 		desc : '',
 		hint : [] as Array<string>,
 		pic : '',
@@ -308,10 +308,21 @@
 	}>();
 
 	onBeforeMount(async () => {
+		if (props.code === - 2) {
+			card.pic = href + 'cover.jpg';
+			return;
+		}
 		if (props.code === 0) {
 			const arr = props.db.split(/[\\/]/);
 			card.lua[0] = arr.slice(0, -1).join('/') + `c${props.code}.lua`;
 			card.pic = href + 'cover.jpg';
+			card.id = '0';
+			card.alias = '0';
+			card.level = '0';
+			card.scale = '0';
+			card.atk = '0';
+			card.def = '0';
+			card.setcode = ['0', '0', '0', '0'];
 			return;
 		}
 		const c = await invoke.get_db(props.db, props.code);

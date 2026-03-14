@@ -39,7 +39,7 @@
 					</var-button>
 					<template #menu>
 						<var-cell ripple class = 'pointer'>搜索</var-cell>
-						<var-cell ripple @click = 'card.select = 0' class = 'pointer'>新建</var-cell>
+						<var-cell ripple @click = 'card.new' class = 'pointer'>新建</var-cell>
 					</template>
 				</var-menu>
 			</template>
@@ -119,6 +119,13 @@
 			}
 			card.content = db
 				.content[db.select].cards?.slice((current - 1) * size, current * size) ?? []
+		},
+		new : async () => {
+			if (card.select !== -1) {
+				card.select = -1;
+				await sleep(100);
+			}
+			card.select = 0;
 		}
 	});
 
