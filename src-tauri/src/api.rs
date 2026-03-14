@@ -66,6 +66,15 @@ pub async fn get_list (path: String) -> Response {
 }
 
 #[tauri::command]
+pub async fn search_list (path: String, search: (Vec<u32>, (Vec<String>, Vec<String>), Vec<u32>)) -> Response {
+	cdb::search_list(path, search).await
+		.ok()
+		.and_then(|i| encode_to_vec(i, CONFIG).ok())
+		.map(Response::new)
+		.unwrap_or_else(|| Response::new(Vec::new()))
+}
+
+#[tauri::command]
 pub async fn get_dbs () -> Result<Vec<String>, String> {
 	cdb::get_dbs().await.map_err(|e| e.to_string())
 }

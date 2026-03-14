@@ -46,6 +46,7 @@ pub fn run() {
 			api::get_db,
 			api::get_dbs,
 			api::get_list,
+			api::search_list,
 			api::create_db,
 			api::close_db,
 			api::save_lua,

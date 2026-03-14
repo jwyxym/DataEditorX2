@@ -74,6 +74,17 @@ class Invoke {
 			return undefined;
 		}
 	};
+	search_list = async (path : string, search : [Array<number>, [Array<string>, Array<string>], [number, number, number, number]]) : Promise<Array<[number, string]>> => {
+		try {
+			const result = await tauri_invoke<ArrayBuffer>('search_list', { path : path, search :  search });
+			return bincode.decode(bincode.Collection(
+				bincode.Tuple(bincode.u32, bincode.String)
+			), result).value as Array<[number, string]>;
+		} catch (e) {
+			toast.error(e)
+			return [];
+		}
+	};
 	get_list = async (path : string) : Promise<Array<[number, string]>> => {
 		try {
 			const result = await tauri_invoke<ArrayBuffer>('get_list', { path : path });

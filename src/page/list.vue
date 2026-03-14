@@ -38,8 +38,8 @@
 						<var-icon name = 'menu' :size = '24' />
 					</var-button>
 					<template #menu>
-						<var-cell ripple class = 'pointer'>搜索</var-cell>
-						<var-cell ripple @click = 'card.new' class = 'pointer'>新建</var-cell>
+						<var-cell ripple @click = 'card.new(-2)' class = 'pointer'>搜索</var-cell>
+						<var-cell ripple @click = 'card.new(0)' class = 'pointer'>新建</var-cell>
 					</template>
 				</var-menu>
 			</template>
@@ -120,12 +120,12 @@
 			card.content = db
 				.content[db.select].cards?.slice((current - 1) * size, current * size) ?? []
 		},
-		new : async () => {
+		new : async (code : number) => {
 			if (card.select !== -1) {
 				card.select = -1;
 				await sleep(100);
 			}
-			card.select = 0;
+			card.select = code;
 		}
 	});
 
@@ -135,8 +135,7 @@
 		click : async (event : Event, index : number) => {
 			(event.target as HTMLElement).classList.contains('var-icon') ? await db.remove(index)
 				: await (async () => {
-					if (!db.content[index].cards)
-						db.content[index].cards = await invoke.get_list(db.content[index].path);
+					db.content[index].cards = await invoke.get_list(db.content[index].path);
 					db.select = index;
 					await card.change(1, 10);
 				})();
@@ -194,8 +193,12 @@
 
 	onUnmounted(new_db!);
 
-	emitter.on('exit', async () => {
-		card.select = - 1;
+	emitter.on('exit', () => card.select = - 1);
+	emitter.on('search', async (arr : any) => {
+		if (db.select < 0 || card.select !== -2)
+			return;
+		db.content[db.select].cards = await invoke.search_list(db.content[db.select].path, arr);
+		card.select = -1;
 	});
 	emitter.on('change', async (arr : any) => {
 		if (arr[1] === null) {
@@ -217,18 +220,30 @@
 			return;
 		}
 		const i = arr as [number, number, string];
-		const c = db.content[db.select].cards
-			?.find(v => v[0] === i[0]);
-		if (c) {
-			c[0] = i[1];
-			c[1] = i[2];
-			card.select = c[0];
+		if (i[0] > 0) {
+			const c = db.content[db.select].cards
+				?.find(v => v[0] === i[0]);
+			if (c) {
+				c[0] = i[1];
+				c[1] = i[2];
+				card.select = c[0];
+				const cache = card.content;
+				card.content = [];
+				cache.sort((a, b) => a[0] - b[0]);
+				await sleep(100);
+				card.content = cache;
+				db.content[db.select].cards?.sort((a, b) => a[0] - b[0]);
+			}
+		} else {
+			card.select = i[0];
+			console.log(i)
 			const cache = card.content;
 			card.content = [];
+			cache.push(arr.slice(1));
 			cache.sort((a, b) => a[0] - b[0]);
 			await sleep(100);
 			card.content = cache;
-			db.content[db.select].cards?.sort((a, b) => a[0] - b[0]);
+			db.content[db.select].cards?.push(arr.slice(1));
 		}
 	});
 

@@ -40,7 +40,7 @@ pub async fn init () -> Result<(), Error> {
 		}
 	}
 	let db: RwLock<Dbs> = RwLock::new(db);
-	let _ = DB.set(db).map_err(|_| anyhow!("read cdb error"));
+	let _ = DB.set(db).map_err(|_| anyhow!("解析数据库失败"));
 	Ok(())
 }
 
@@ -55,11 +55,13 @@ pub async fn read (path: String) -> Result<(), Error> {
 pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Result<(), Error> {
 	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
 	let mut db: RwLockWriteGuard<'_, Dbs> = db.write().await;
-	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("no such cdb"))?;
-	if cdb.0[0] != code && db.contains_key(&cdb.0[0]) {
-		return Err(anyhow!("change code error"));
+	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("获取数据库错误：数据库不存在"))?;
+	if code == 0 && db.contains_key(&cdb.0[0]) {
+		return Err(anyhow!("创建卡片失败"));
+	} else if cdb.0[0] != code && db.contains_key(&cdb.0[0]) {
+		return Err(anyhow!("修改卡号失败"));
 	}
-	if cdb.0[0] != code {
+	if code != 0 && cdb.0[0] != code {
 		db.remove(&code);
 		let i: (Result<(), Error>, Result<(), Error>, Result<(), Error>) = join!(
 			del_db(&path, code),
@@ -67,7 +69,7 @@ pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Re
 				if let Ok((from, to)) = (|| -> Result<(PathBuf, PathBuf), Error> {
 					let path: PathBuf = Path::new(&path)
 						.parent()
-						.ok_or(anyhow!("path error"))?
+						.ok_or(anyhow!("获取路径错误"))?
 						.join("pics");
 					let pic: DirEntry = WalkDir::new(&path)
 						.into_iter()
@@ -84,7 +86,7 @@ pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Re
 							name.starts_with(&format!("{}.", code))
 								&& ["jpg", "jpeg", "png", "webp"].contains(&ext)
 						})
-						.ok_or(anyhow!("no such path"))?;
+						.ok_or(anyhow!("获取路径错误"))?;
 					let from = pic.path().to_path_buf();
 					let ext: &str =  pic
 						.path()
@@ -102,7 +104,7 @@ pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Re
 				if let Ok((from, to)) = (|| -> Result<(PathBuf, PathBuf), Error> {
 					let path: PathBuf = Path::new(&path)
 						.parent()
-						.ok_or(anyhow!("path error"))?
+						.ok_or(anyhow!("获取路径错误"))?
 						.join("script");
 					let lua: DirEntry = WalkDir::new(&path)
 						.into_iter()
@@ -115,7 +117,7 @@ pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Re
 							name.starts_with(&format!("{}.", code))
 								&& name.ends_with("lua")
 						})
-						.ok_or(anyhow!("no such path"))?;
+						.ok_or(anyhow!("获取路径错误"))?;
 					let from = lua.path().to_path_buf();
 					let to: PathBuf = path.join(cdb.0[0].to_string()).with_extension("lua");
 					Ok((from, to))
@@ -137,7 +139,7 @@ pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Re
 pub async fn del (path: String, code: u32) -> Result<(), Error> {
 	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
 	let mut db: RwLockWriteGuard<'_, Dbs> = db.write().await;
-	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("no such cdb"))?;
+	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("删除数据库错误：数据库不存在"))?;
 	db.remove(&code);
 	let i: (Result<(), Error>, Result<(), Error>, Result<(), Error>) = join!(
 		del_db(&path, code),
@@ -145,7 +147,7 @@ pub async fn del (path: String, code: u32) -> Result<(), Error> {
 			if let Ok(pic) = (|| -> Result<PathBuf, Error> {
 				let path: PathBuf = Path::new(&path)
 					.parent()
-					.ok_or(anyhow!("path error"))?
+					.ok_or(anyhow!("获取路径错误"))?
 					.join("pics");
 				let pic: DirEntry = WalkDir::new(path)
 					.into_iter()
@@ -162,7 +164,7 @@ pub async fn del (path: String, code: u32) -> Result<(), Error> {
 						name.starts_with(&format!("{}.", code))
 							&& ["jpg", "jpeg", "png", "webp"].contains(&ext)
 					})
-					.ok_or(anyhow!("no such path"))?;
+					.ok_or(anyhow!("获取路径错误"))?;
 				let path = pic.path().to_path_buf();
 				Ok(path)
 			})() {
@@ -174,7 +176,7 @@ pub async fn del (path: String, code: u32) -> Result<(), Error> {
 			if let Ok(lua) = (|| -> Result<PathBuf, Error> {
 				let path: PathBuf = Path::new(&path)
 					.parent()
-					.ok_or(anyhow!("path error"))?
+					.ok_or(anyhow!("获取路径错误"))?
 					.join("script");
 				let lua: DirEntry = WalkDir::new(path)
 					.into_iter()
@@ -187,7 +189,7 @@ pub async fn del (path: String, code: u32) -> Result<(), Error> {
 						name.starts_with(&format!("{}.", code))
 							&& name.ends_with("lua")
 					})
-					.ok_or(anyhow!("no such path"))?;
+					.ok_or(anyhow!("获取路径错误"))?;
 				let path = lua.path().to_path_buf();
 				Ok(path)
 			})() {
@@ -207,7 +209,7 @@ pub async fn get (path: String, code: u32) -> Result<(String, (String, String), 
 	let db: RwLockReadGuard<'_, Dbs> = db.read().await;
 	let db: (Vec<u32>, Vec<String>) = db
 		.get(&path)
-		.ok_or(anyhow!("no such db"))?
+		.ok_or(anyhow!("获取数据库错误：数据库不存在"))?
 		.get(&code)
 		.ok_or(anyhow!("no such code"))
 		.unwrap_or(&(Vec::new(), Vec::new()))
@@ -215,7 +217,7 @@ pub async fn get (path: String, code: u32) -> Result<(String, (String, String), 
 	let pic: String = (|| -> Result<String, Error> {
 		let path: PathBuf = Path::new(&path)
 			.parent()
-			.ok_or(anyhow!("path error"))?
+			.ok_or(anyhow!("获取路径错误"))?
 			.join("pics");
 		let pic: DirEntry = WalkDir::new(path)
 			.into_iter()
@@ -232,24 +234,24 @@ pub async fn get (path: String, code: u32) -> Result<(String, (String, String), 
 				name.starts_with(&format!("{}.", code))
 					&& ["jpg", "jpeg", "png", "webp"].contains(&ext)
 			})
-			.ok_or(anyhow!("no such path"))?;
+			.ok_or(anyhow!("获取路径错误"))?;
 		Ok(pic
 			.path()
 			.as_os_str()
 			.to_str()
-			.ok_or(anyhow!("no such path"))?
+			.ok_or(anyhow!("获取路径错误"))?
 			.to_string())
 	})().unwrap_or(String::new());
 	let lua: (String, String) = (|| -> Result<(String, String), Error> {
 		let path: PathBuf = Path::new(&path)
 			.parent()
-			.ok_or(anyhow!("path error"))?
+			.ok_or(anyhow!("获取路径错误"))?
 			.join("script")
 			.join(&format!("c{}.lua", code));
 		Ok((path
 			.as_os_str()
 			.to_str()
-			.ok_or(anyhow!("no such path"))?
+			.ok_or(anyhow!("获取路径错误"))?
 			.to_string(), read_to_string(path).unwrap_or(String::new())))
 	})().unwrap_or((String::new(), String::new()));
 	Ok((pic, lua, db))
@@ -260,8 +262,62 @@ pub async fn get_list (path: String) -> Result<Vec<(u32, String)>, Error> {
 	let db: RwLockReadGuard<'_, Dbs> = db.read().await;
 	Ok(db
 		.get(&path)
-		.ok_or(anyhow!("no such db"))?
+		.ok_or(anyhow!("获取数据库错误：数据库不存在"))?
 		.into_iter()
+		.map(|i: (&u32, &(Vec<u32>, Vec<String>))| (*i.0, i.1.1[0].clone()))
+		.collect())
+}
+
+pub async fn search_list (path: String, search: (Vec<u32>, (Vec<String>, Vec<String>), Vec<u32>)) -> Result<Vec<(u32, String)>, Error> {
+	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
+	let db: RwLockReadGuard<'_, Dbs> = db.read().await;
+	let _setcode: &Vec<u32> = &search.2;
+	let _id: u32 = search.0[0];
+	let _ot: u32 = search.0[1];
+	let _alias: u32 = search.0[2];
+	let _type: u32 = search.0[3];
+	let _atk: u32 = search.0[4];
+	let _def: u32 = search.0[5];
+	let _lv: u32 = search.0[6];
+	let _scale: u32 = search.0[7];
+	let _race: u32 = search.0[8];
+	let _attribute: u32 = search.0[9];
+	let _category: u32 = search.0[10];
+	let _name: &Vec<String> = &search.1.0;
+	let _desc: &Vec<String> = &search.1.1;
+	Ok(db
+		.get(&path)
+		.ok_or(anyhow!("获取数据库错误：数据库不存在"))?
+		.into_iter()
+		.filter(|(_, i)| {
+			for setcode in _setcode.into_iter() {
+				if *setcode != 0 && i.0[3] & *setcode != *setcode {
+					return false;
+				}
+			}
+			for name in _name.into_iter() {
+				if !name.is_empty() && !i.1[0].contains(name) {
+					return false;
+				}
+			}
+			for desc in _desc.into_iter() {
+				if !desc.is_empty() && !i.1[1].contains(desc) {
+					return false;
+				}
+			}
+			(_id == 0 || i.0[0] == _id)
+			&& (_ot == 0 || i.0[1] & _ot == _ot)
+			&& (_alias == 0 || i.0[2] == _alias)
+			&& (_type == 0 || i.0[4] & _type == _type)
+			&& (_atk == 0 || i.0[5] == _atk)
+			&& (_def == 0 || i.0[6] == _def)
+			&& (_lv == 0 || i.0[7] & 0xffff == _lv)
+			&& (_scale == 0 || i.0[7] >> 24 == _scale)
+			&& (_race == 0 || i.0[8] & _race == _race)
+			&& (_attribute == 0 || i.0[9] & _attribute == _attribute)
+			&& (_category == 0 || i.0[10] & _category == _category)
+			&& (_category == 0 || i.0[10] & _category == _category)
+		})	
 		.map(|i: (&u32, &(Vec<u32>, Vec<String>))| (*i.0, i.1.1[0].clone()))
 		.collect())
 }

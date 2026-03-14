@@ -169,13 +169,10 @@
 		</transition>
 		<div class = 'btns'>
 			<var-chip plain type = 'success' @click = 'card.exit'>退出</var-chip>
-			<var-chip plain type = 'success' @click = 'card.save'>保存</var-chip>
-			<transition name = 'opacity'>
-				<var-chip plain type = 'success' v-show = '!page.coder' @click = 'card.coder'>脚本</var-chip>
-			</transition>
-			<transition name = 'opacity'>
-				<var-chip plain type = 'danger' v-show = '!page.coder' @click = 'card.del'>删除</var-chip>
-			</transition>
+			<var-chip plain type = 'success' v-if = 'code === -2' @click = 'card.search'>搜索</var-chip>
+			<var-chip plain type = 'success' v-else @click = 'card.save'>保存</var-chip>
+			<var-chip plain type = 'success' v-if = '!page.coder && code > 0' @click = 'card.coder'>脚本</var-chip>
+			<var-chip plain type = 'danger' v-if = '!page.coder && code > 0' @click = 'card.del'>删除</var-chip>
 		</div>
 	</div>
 </template>
@@ -256,7 +253,7 @@
 				card.type.reduce((acc, curr) => acc + curr, 0),
 				parseInt(card.atk),
 				card.type.includes(0x4000000) ? card.link : parseInt(card.def),
-				parseInt(card.level),
+				parseInt(card.level) | (parseInt(card.scale) << 16) | (parseInt(card.scale) << 24),
 				card.race,
 				card.attribute,
 				card.category.reduce((acc, curr) => acc + curr, 0)
@@ -279,6 +276,29 @@
 				card.lua[0] = arr.slice(0, -1).join('/') + `c${card.id}.lua`;
 				toast.info('保存成功');
 			}
+		},
+		search : () => {
+			const row = [
+				([
+					parseInt(card.id),
+					card.ot.reduce((acc, curr) => acc + curr, 0),
+					parseInt(card.alias),
+					card.type.reduce((acc, curr) => acc + curr, 0),
+					parseInt(card.atk),
+					card.type.includes(0x4000000) ? card.link : parseInt(card.def),
+					parseInt(card.level),
+					parseInt(card.scale),
+					card.race,
+					card.attribute,
+					card.category.reduce((acc, curr) => acc + curr, 0)
+				] as Array<number>).map(i => isNaN(i) ? 0 : i),
+				[
+					card.name.split('%%'),
+					card.desc.split('%%')
+				],
+				card.setcode.map(i => parseInt(i, 16)).map(i => isNaN(i) ? 0 : i)
+			];
+			props.code === -2 ? emitter.emit('search', row) : true;
 		},
 		del : async () => {
 			if (await invoke.del_db(props.db, props.code)) {
@@ -323,6 +343,7 @@
 			card.atk = '0';
 			card.def = '0';
 			card.setcode = ['0', '0', '0', '0'];
+			card.hint = new Array(16).fill('');
 			return;
 		}
 		const c = await invoke.get_db(props.db, props.code);
