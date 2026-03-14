@@ -105,7 +105,7 @@
 		select : -1,
 		click : async (index : number) => {
 			const code = card.content[index][0];
-			if (card.select > -1 && card.select !== code) {
+			if (card.select !== -1 && card.select !== code) {
 				card.select = -1;
 				await sleep(100);
 				card.select = code;
@@ -137,6 +137,7 @@
 				: await (async () => {
 					db.content[index].cards = await invoke.get_list(db.content[index].path);
 					db.select = index;
+					card.select = -2;
 					await card.change(1, 10);
 				})();
 		},
