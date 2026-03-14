@@ -1,7 +1,7 @@
 mod cdb;
 mod config;
 use config::Info;
-use std::path::PathBuf;
+use std::{path::{PathBuf, Path}, fs};
 use bincode::{encode_to_vec, config::{standard, Configuration}};
 use tauri::{
 	ipc::Response,
@@ -78,4 +78,12 @@ pub async fn create_db (path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn close_db (path: String) -> Result<(), String> {
 	cdb::close(path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn save_lua (path: String, lua: String) -> Result<(), String> {
+	if let Some(parent) = Path::new(&path).parent() {
+		fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+	}
+	fs::write(path, lua).map_err(|e| e.to_string())
 }

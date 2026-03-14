@@ -48,6 +48,7 @@ pub fn run() {
 			api::get_list,
 			api::create_db,
 			api::close_db,
+			api::save_lua,
 		])
 		.run(tauri::generate_context!())
 		.expect("error while running tauri application");

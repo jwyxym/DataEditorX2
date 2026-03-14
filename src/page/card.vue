@@ -24,7 +24,10 @@
 					</var-button>
 					<template #menu>
 						<var-cell ripple class = 'pointer' @click = 'card.save'>保存</var-cell>
-						<var-cell ripple class = 'pointer' @click = 'card.del'>删除</var-cell>
+						<var-cell ripple class = 'pointer' @click = 'card.coder'>脚本</var-cell>
+						<transition name = 'opacity'>
+							<var-cell ripple class = 'pointer' v-show = '!page.coder' @click = 'card.del'>删除</var-cell>
+						</transition>
 					</template>
 				</var-menu>
 			</template>
@@ -161,10 +164,18 @@
 				</div>
 			</div>
 		</div>
+		<transition name = 'move_out'>
+			<Coder v-if = 'page.coder' :lua = 'card.lua[1]' :path = 'card.lua[0]' class = 'coder'/>
+		</transition>
 		<div class = 'btns'>
 			<var-chip plain type = 'success' @click = 'card.exit'>退出</var-chip>
 			<var-chip plain type = 'success' @click = 'card.save'>保存</var-chip>
-			<var-chip plain type = 'danger' @click = 'card.del'>删除</var-chip>
+			<transition name = 'opacity'>
+				<var-chip plain type = 'success' v-show = '!page.coder' @click = 'card.coder'>脚本</var-chip>
+			</transition>
+			<transition name = 'opacity'>
+				<var-chip plain type = 'danger' v-show = '!page.coder' @click = 'card.del'>删除</var-chip>
+			</transition>
 		</div>
 	</div>
 </template>
@@ -176,6 +187,8 @@
 	import config from '../script/config';
 	import toast from '../script/toast';
 	import emitter from '../script/emit';
+
+	import Coder from './coder.vue';
 
 	const href = window.location.href;
 
@@ -195,29 +208,46 @@
 		]
 	};
 
+	const page = reactive({
+		coder : false
+	})
+
 	const card = reactive({
-		id : '',
+		lua : ['' ,'local s,id,o=GetID()\nfunction s.initial_effect(c)\n\nend'] as [string, string],
+		id : '0',
 		old_name : '',
 		name : '',
 		ot : [] as Array<number>,
-		alias : '',
-		level : '',
-		scale : '',
-		atk : '',
-		def : '',
+		alias : '0',
+		level : '0',
+		scale : '0',
+		atk : '0',
+		def : '0',
 		link : 0,
 		type : [] as Array<number>,
 		race : 0,
 		attribute : 0,
 		category : [] as Array<number>,
-		setcode : ['', '', '', ''] as [string, string, string, string],
+		setcode : ['0', '0', '0', '0'] as [string, string, string, string],
 		desc : '',
 		hint : [] as Array<string>,
 		pic : '',
 		update : {
 			link : (link : number) => card.link+= (card.link & link ? - 1 : 1) * link
 		},
+		coder : () => {
+			parseInt(card.id) ? page.coder = !page.coder
+				: toast.error('需要卡号');
+		},
 		save : async () => {
+			if (page.coder) {
+				emitter.emit('save');
+				return;
+			}
+			if (!parseInt(card.id)) {
+				toast.error('需要卡号');
+				return;
+			}
 			const row = [
 				parseInt(card.id),
 				card.ot.reduce((acc, curr) => acc + curr, 0),
@@ -245,6 +275,8 @@
 			])) {
 				emitter.emit('change', [props.code, parseInt(card.id), card.name]);
 				card.old_name = card.name;
+				const arr = props.db.split(/[\\/]/);
+				card.lua[0] = arr.slice(0, -1).join('/') + `c${card.id}.lua`;
 				toast.info('保存成功');
 			}
 		},
@@ -255,7 +287,8 @@
 			}
 		},
 		exit : () => {
-			emitter.emit('exit');
+			page.coder ? page.coder = false
+				: emitter.emit('exit');
 		},
 	});
 
@@ -275,6 +308,12 @@
 	}>();
 
 	onBeforeMount(async () => {
+		if (props.code === 0) {
+			const arr = props.db.split(/[\\/]/);
+			card.lua[0] = arr.slice(0, -1).join('/') + `c${props.code}.lua`;
+			card.pic = href + 'cover.jpg';
+			return;
+		}
 		const c = await invoke.get_db(props.db, props.code);
 		if (!c) return;
 		card.pic = c.path.length > 0 ? convertFileSrc(c.path)
@@ -302,6 +341,10 @@
 		card.name = texts[0];
 		card.desc = texts[1];
 		card.hint = texts.slice(2);
+		card.lua = [
+			c.lua[0],
+			c.lua[1].length > 0 ? c.lua[1] : 'local s,id,o=GetID()\nfunction s.initial_effect(c)\n\nend'
+		];
 	});
 </script>
 <style scoped lang = 'scss'>
@@ -396,6 +439,13 @@
 				}
 			}
 		}
+		.coder {
+			position: absolute;
+			left: 0;
+			top: 0;
+			width: 100%;
+			height: calc(100% - 50px);
+		}
 		
 		@media (max-aspect-ratio: 1/1) {
 			:deep(.var-app-bar) {
@@ -443,6 +493,42 @@
 					}
 				}
 			}
+			.coder {
+				top: 50px;
+				height: 100%;
+			}
+		}
+	}
+	.move_out {
+		&-enter-active,
+		&-leave-active {
+			transition: all 0.1s ease;
+		}
+
+		&-enter-from,
+		&-leave-to {
+			transform: translate(-100%);
+		}
+
+		&-enter-to,
+		&-leave-from {
+			transform: translate(0);
+		}
+	}
+	.opacity {
+		&-enter-active,
+		&-leave-active {
+			transition: opacity 0.1s ease;
+		}
+
+		&-enter-from,
+		&-leave-to {
+			opacity: 0;
+		}
+
+		&-enter-to,
+		&-leave-from {
+			opacity: 1;
 		}
 	}
 </style>

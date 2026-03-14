@@ -1,7 +1,7 @@
 use rusqlite::params;
 use tokio_rusqlite::Connection;
 use anyhow::{Result, Error, anyhow};
-use std::{collections::BTreeMap, env, sync::OnceLock, path::{Path, PathBuf}};
+use std::{collections::BTreeMap, env, sync::OnceLock, path::{Path, PathBuf}, fs::read_to_string};
 use walkdir::{WalkDir, DirEntry};
 use tokio::{
 	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, task::{JoinHandle, spawn}, fs, join
@@ -202,7 +202,7 @@ pub async fn del (path: String, code: u32) -> Result<(), Error> {
 	Ok(())
 }
 
-pub async fn get (path: String, code: u32) -> Result<(String, (Vec<u32>, Vec<String>)), Error> {
+pub async fn get (path: String, code: u32) -> Result<(String, (String, String), (Vec<u32>, Vec<String>)), Error> {
 	let db: &RwLock<Dbs> = DB.get().ok_or(anyhow!(""))?;
 	let db: RwLockReadGuard<'_, Dbs> = db.read().await;
 	let db: (Vec<u32>, Vec<String>) = db
@@ -240,7 +240,19 @@ pub async fn get (path: String, code: u32) -> Result<(String, (Vec<u32>, Vec<Str
 			.ok_or(anyhow!("no such path"))?
 			.to_string())
 	})().unwrap_or(String::new());
-	Ok((pic, db))
+	let lua: (String, String) = (|| -> Result<(String, String), Error> {
+		let path: PathBuf = Path::new(&path)
+			.parent()
+			.ok_or(anyhow!("path error"))?
+			.join("script")
+			.join(&format!("c{}.lua", code));
+		Ok((path
+			.as_os_str()
+			.to_str()
+			.ok_or(anyhow!("no such path"))?
+			.to_string(), read_to_string(path).unwrap_or(String::new())))
+	})().unwrap_or((String::new(), String::new()));
+	Ok((pic, lua, db))
 }
 
 pub async fn get_list (path: String) -> Result<Vec<(u32, String)>, Error> {

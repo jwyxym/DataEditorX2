@@ -39,7 +39,7 @@
 					</var-button>
 					<template #menu>
 						<var-cell ripple class = 'pointer'>搜索</var-cell>
-						<var-cell ripple class = 'pointer'>新建</var-cell>
+						<var-cell ripple @click = 'card.select = 0' class = 'pointer'>新建</var-cell>
 					</template>
 				</var-menu>
 			</template>

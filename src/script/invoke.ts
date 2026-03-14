@@ -58,11 +58,12 @@ class Invoke {
 		}
 		return true;
 	};
-	get_db = async (path : string, code : number) : Promise<{path : string; card : [Array<number>, Array<string>]} | undefined> => {
+	get_db = async (path : string, code : number) : Promise<{path : string; lua : [string, string]; card : [Array<number>, Array<string>]} | undefined> => {
 		try {
 			const result = await tauri_invoke<ArrayBuffer>('get_db', { path : path, code : code });
 			return bincode.decode(bincode.Struct({
 				path : bincode.String,
+				lua : bincode.Tuple(bincode.String, bincode.String),
 				card : bincode.Tuple(
 					bincode.Collection(bincode.u32),
 					bincode.Collection(bincode.String)
@@ -117,6 +118,15 @@ class Invoke {
 				race : [],
 				types : []
 			};
+		}
+	};
+	save_lua = async (path : string, lua : string) : Promise<boolean> => {
+		try {
+			await tauri_invoke<ArrayBuffer>('save_lua', { path : path, lua : lua });
+			return true;
+		} catch (e) {
+			toast.error(e)
+			return false;
 		}
 	};
 };
