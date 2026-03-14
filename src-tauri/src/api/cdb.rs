@@ -4,7 +4,7 @@ use anyhow::{Result, Error, anyhow};
 use std::{collections::BTreeMap, env, sync::OnceLock, path::{Path, PathBuf}};
 use walkdir::{WalkDir, DirEntry};
 use tokio::{
-	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, task::{JoinHandle, spawn}
+	sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, task::{JoinHandle, spawn}, fs, join
 };
 
 pub static DB: OnceLock<RwLock<Dbs>> = OnceLock::new();
@@ -61,7 +61,73 @@ pub async fn write (path: String, code: u32, cdb: (Vec<u32>, Vec<String>)) -> Re
 	}
 	if cdb.0[0] != code {
 		db.remove(&code);
-		del_db(&path, code).await?;
+		let i: (Result<(), Error>, Result<(), Error>, Result<(), Error>) = join!(
+			del_db(&path, code),
+			async {
+				if let Ok((from, to)) = (|| -> Result<(PathBuf, PathBuf), Error> {
+					let path: PathBuf = Path::new(&path)
+						.parent()
+						.ok_or(anyhow!("path error"))?
+						.join("pics");
+					let pic: DirEntry = WalkDir::new(&path)
+						.into_iter()
+						.filter_map(|i| i.ok())
+						.find(|i| {
+							let name: &str = i.path()
+								.file_name()
+								.and_then(|n| n.to_str())
+								.unwrap_or("");
+							let ext: &str = i.path()
+								.extension()
+								.and_then(|n| n.to_str())
+								.unwrap_or("");
+							name.starts_with(&format!("{}.", code))
+								&& ["jpg", "jpeg", "png", "webp"].contains(&ext)
+						})
+						.ok_or(anyhow!("no such path"))?;
+					let from = pic.path().to_path_buf();
+					let ext: &str =  pic
+						.path()
+						.extension()
+						.and_then(|n| n.to_str())
+						.unwrap_or("");
+					let to: PathBuf = path.join(cdb.0[0].to_string()).with_extension(ext);
+					Ok((from, to))
+				})() {
+					fs::rename(from, to).await?;
+				}
+				Ok(())
+			},
+			async {
+				if let Ok((from, to)) = (|| -> Result<(PathBuf, PathBuf), Error> {
+					let path: PathBuf = Path::new(&path)
+						.parent()
+						.ok_or(anyhow!("path error"))?
+						.join("script");
+					let lua: DirEntry = WalkDir::new(&path)
+						.into_iter()
+						.filter_map(|i| i.ok())
+						.find(|i| {
+							let name: &str = i.path()
+								.file_name()
+								.and_then(|n| n.to_str())
+								.unwrap_or("");
+							name.starts_with(&format!("{}.", code))
+								&& name.ends_with("lua")
+						})
+						.ok_or(anyhow!("no such path"))?;
+					let from = lua.path().to_path_buf();
+					let to: PathBuf = path.join(cdb.0[0].to_string()).with_extension("lua");
+					Ok((from, to))
+				})() {
+					fs::rename(from, to).await?;
+				}
+				Ok(())
+			}
+		);
+		i.0?;
+		i.1?;
+		i.2?;
 	}
 	db.insert(cdb.0[0], cdb.clone());
 	write_db(&path, cdb.clone()).await?;
@@ -73,7 +139,66 @@ pub async fn del (path: String, code: u32) -> Result<(), Error> {
 	let mut db: RwLockWriteGuard<'_, Dbs> = db.write().await;
 	let db: &mut Db = db.get_mut(&path).ok_or(anyhow!("no such cdb"))?;
 	db.remove(&code);
-	del_db(&path, code).await?;
+	let i: (Result<(), Error>, Result<(), Error>, Result<(), Error>) = join!(
+		del_db(&path, code),
+		async {
+			if let Ok(pic) = (|| -> Result<PathBuf, Error> {
+				let path: PathBuf = Path::new(&path)
+					.parent()
+					.ok_or(anyhow!("path error"))?
+					.join("pics");
+				let pic: DirEntry = WalkDir::new(path)
+					.into_iter()
+					.filter_map(|i| i.ok())
+					.find(|i| {
+						let name: &str = i.path()
+							.file_name()
+							.and_then(|n| n.to_str())
+							.unwrap_or("");
+						let ext: &str = i.path()
+							.extension()
+							.and_then(|n| n.to_str())
+							.unwrap_or("");
+						name.starts_with(&format!("{}.", code))
+							&& ["jpg", "jpeg", "png", "webp"].contains(&ext)
+					})
+					.ok_or(anyhow!("no such path"))?;
+				let path = pic.path().to_path_buf();
+				Ok(path)
+			})() {
+				fs::remove_file(pic).await?;
+			}
+			Ok(())
+		},
+		async {
+			if let Ok(lua) = (|| -> Result<PathBuf, Error> {
+				let path: PathBuf = Path::new(&path)
+					.parent()
+					.ok_or(anyhow!("path error"))?
+					.join("script");
+				let lua: DirEntry = WalkDir::new(path)
+					.into_iter()
+					.filter_map(|i| i.ok())
+					.find(|i| {
+						let name: &str = i.path()
+							.file_name()
+							.and_then(|n| n.to_str())
+							.unwrap_or("");
+						name.starts_with(&format!("{}.", code))
+							&& name.ends_with("lua")
+					})
+					.ok_or(anyhow!("no such path"))?;
+				let path = lua.path().to_path_buf();
+				Ok(path)
+			})() {
+				fs::remove_file(lua).await?;
+			}
+			Ok(())
+		}
+	);
+	i.0?;
+	i.1?;
+	i.2?;
 	Ok(())
 }
 
