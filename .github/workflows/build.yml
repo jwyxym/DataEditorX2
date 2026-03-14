@@ -1,0 +1,379 @@
+name: build dex2
+
+on:
+  push:
+    branches:
+      - main
+    
+jobs:
+  build-windows:
+    name: build-windows-${{ matrix.target }}
+    runs-on: ${{ matrix.run-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+            run-on: windows-latest
+          - target: aarch64
+            run-on: windows-11-arm
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.18.0'
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.88.0
+
+    - name: Rust cache
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+
+    - name: NPM Init
+      run: |
+        npm install
+
+    - name: Windows build
+      run: |
+        npm run tauri build
+    
+    - name: Copy
+      shell: cmd
+      run: |
+        set "found_msi="
+        set "found_exe="
+        mkdir build
+
+        for %%f in (.\src-tauri\target\release\bundle\msi\*) do (
+            if not defined found_msi (
+                copy "%%f" ".\build\dex2.msi"
+                set "found_msi=1"
+            )
+        )
+
+        for %%f in (.\src-tauri\target\release\bundle\nsis\*) do (
+            if not defined found_exe (
+                copy "%%f" ".\build\dex2.exe"
+                set "found_exe=1"
+            )
+        )
+
+    - name: Upload File
+      uses: actions/upload-artifact@v4
+      with:
+        name: dex2-windows-${{ matrix.target }}.exe
+        retention-days: 7
+        path: .\build\dex2.exe
+
+    - name: Upload File
+      uses: actions/upload-artifact@v4
+      with:
+        name: dex2-windows-${{ matrix.target }}.msi
+        retention-days: 7
+        path: .\build\dex2.msi
+
+  build-macos:
+    name: build-macos-${{ matrix.target }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+          - target: aarch64
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.18.0'
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.88.0
+        target: ${{ matrix.target }}-apple-darwin
+
+    - name: Rust cache
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+
+    - name: NPM Init
+      run: |
+        npm install
+
+    - name: Macos build
+      run: |
+        npm run tauri:build
+
+    - name: Copy
+      run: |
+        mkdir -p ./build
+        DMG_FILES=(./src-tauri/target/release/bundle/dmg/*.dmg)
+        cp "${DMG_FILES[0]}" ./build/dex2.dmg
+
+    - name: Upload File
+      uses: actions/upload-artifact@v4
+      with:
+        name: dex2-macos-${{ matrix.target }}.dmg
+        retention-days: 7
+        path: ./build/dex2.dmg
+
+    - name: Upload File
+      uses: actions/upload-artifact@v4
+      with:
+        name: dex2-macos-${{ matrix.target }}.app
+        retention-days: 7
+        path: ./src-tauri/target/release/bundle/macos/
+
+  build-linux:
+    name: build-linux-${{ matrix.target }}
+    runs-on: ${{ matrix.run-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+            run-on: ubuntu-latest
+          - target: aarch64
+            run-on: ubuntu-24.04-arm
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.18.0'
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.88.0
+
+    - name: Rust cache
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+
+    - name: NPM Init
+      run: |
+        npm install
+
+    - name: Build AppImage
+      run: |
+        npm run tauri:build
+
+    - name: Copy
+      run: |
+        mkdir -p ./build
+        cp ./src-tauri/target/release/bundle/appimage/*.AppImage ./build/dex2.AppImage
+        cp ./src-tauri/target/release/bundle/deb/*.deb ./build/dex2.deb
+
+    - name: Build Deb
+      run: |
+        npm run tauri build
+
+    - name: Upload File
+      uses: actions/upload-artifact@v4
+      with:
+        name: dex2-linux-${{ matrix.target }}.deb
+        retention-days: 7
+        path: ./build/dex2.deb
+
+    - name: Upload File
+      uses: actions/upload-artifact@v4
+      with:
+        name: dex2-linux-${{ matrix.target }}.AppImage
+        retention-days: 7
+        path: ./build/dex2.AppImage
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: build
+
+      - name: Delete old Release
+        run: |
+          TAG_NAME=release-latest
+          gh release delete "$TAG_NAME" --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old tag
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git fetch --tags
+          git tag -d release-latest || true
+          git push origin :refs/tags/release-latest || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create tag
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git tag release-latest
+          git push origin release-latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: release-latest
+          release_name: release-latest
+          draft: false
+          prerelease: false
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-windows-x86_64.msi/dex2.msi
+          asset_name: dex2-windows-x86_64.msi
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-windows-x86_64.exe/dex2.exe
+          asset_name: dex2-windows-x86_64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-windows-aarch64.msi/dex2.msi
+          asset_name: dex2-windows-aarch64.msi
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-windows-aarch64.exe/dex2.exe
+          asset_name: dex2-windows-aarch64.exe
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-macos-x86_64.dmg/dex2.dmg
+          asset_name: dex2-macos-x86_64.dmg
+          asset_content_type: application/octet-stream
+
+      - name: zip
+        run: |
+          cd build
+          zip -r dex2-macos-x86_64.app.zip dex2-macos-x86_64.app/
+          zip -r dex2-macos-aarch64.app.zip dex2-macos-aarch64.app/
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-macos-x86_64.app.zip
+          asset_name: dex2-macos-x86_64.app.zip
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-macos-aarch64.dmg/dex2.dmg
+          asset_name: dex2-macos-aarch64.dmg
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-macos-aarch64.app.zip
+          asset_name: dex2-macos-aarch64.app.zip
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-linux-x86_64.deb/dex2.deb
+          asset_name: dex2-linux-x86_64.deb
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-linux-x86_64.AppImage/dex2.AppImage
+          asset_name: dex2-linux-x86_64.AppImage
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-linux-aarch64.deb/dex2.deb
+          asset_name: dex2-linux-aarch64.deb
+          asset_content_type: application/octet-stream
+
+      - name: Upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dex2-linux-aarch64.AppImage/dex2.AppImage
+          asset_name: dex2-linux-aarch64.AppImage
+          asset_content_type: application/octet-stream
