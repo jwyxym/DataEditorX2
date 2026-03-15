@@ -90,6 +90,10 @@
 		color: var(--color-text);
 		background-color: var(--color-body);
 		color-scheme: var(--color-scheme);
+		#app {
+			transform: scale(var(--scale));
+			transform-origin: top left;
+		}
 	}
 	:root {
 		--cell-border-color: black !important;
